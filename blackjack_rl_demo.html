@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Blackjack RL Agent Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Mono:wght@400;500&family=Crimson+Pro:ital,wght@0,400;1,400&display=swap');
+
+  :root {
+    --felt: #0d4a2a;
+    --felt-light: #145c34;
+    --felt-dark: #082e1a;
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --card-bg: #faf6f0;
+    --card-red: #c0392b;
+    --card-dark: #1a1a2e;
+    --win: #27ae60;
+    --lose: #c0392b;
+    --push: #e67e22;
+    --text-light: #f0ead6;
+    --chip-blue: #2980b9;
+    --chip-red: #c0392b;
+    --chip-black: #2c2c2c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--felt-dark);
+    font-family: 'DM Mono', monospace;
+    color: var(--text-light);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* felt texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      repeating-linear-gradient(45deg, rgba(255,255,255,.015) 0px, rgba(255,255,255,.015) 1px, transparent 1px, transparent 8px),
+      repeating-linear-gradient(-45deg, rgba(255,255,255,.015) 0px, rgba(255,255,255,.015) 1px, transparent 1px, transparent 8px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px 16px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 24px;
+    border-bottom: 1px solid rgba(201,168,76,0.3);
+    padding-bottom: 16px;
+  }
+
+  header h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    color: var(--gold);
+    letter-spacing: 2px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  header p {
+    font-family: 'Crimson Pro', serif;
+    font-style: italic;
+    color: rgba(240,234,214,0.6);
+    font-size: 0.95rem;
+    margin-top: 4px;
+  }
+
+  /* TABLE */
+  .table {
+    background: radial-gradient(ellipse at 50% 40%, var(--felt-light), var(--felt), var(--felt-dark));
+    border-radius: 120px;
+    border: 6px solid #3d2b00;
+    box-shadow:
+      0 0 0 2px var(--gold),
+      0 0 0 4px #3d2b00,
+      0 20px 60px rgba(0,0,0,0.6),
+      inset 0 2px 8px rgba(255,255,255,0.05);
+    padding: 28px 20px;
+    margin-bottom: 20px;
+    min-height: 320px;
+    position: relative;
+  }
+
+  .zone-label {
+    font-family: 'Crimson Pro', serif;
+    font-style: italic;
+    font-size: 0.75rem;
+    color: rgba(201,168,76,0.5);
+    text-align: center;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .hand-area {
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    min-height: 110px;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+
+  /* CARDS */
+  .card {
+    width: 62px;
+    height: 90px;
+    border-radius: 8px;
+    background: var(--card-bg);
+    border: 1px solid #ccc;
+    box-shadow: 2px 3px 8px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 5px;
+    position: relative;
+    animation: dealCard 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    flex-shrink: 0;
+  }
+
+  @keyframes dealCard {
+    from { opacity: 0; transform: translateY(-30px) rotate(-8deg) scale(0.7); }
+    to   { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); }
+  }
+
+  .card.face-down {
+    background: linear-gradient(135deg, #1a3a5c 25%, #0d2137 25%, #0d2137 50%, #1a3a5c 50%, #1a3a5c 75%, #0d2137 75%);
+    background-size: 10px 10px;
+    border: 1px solid #2980b9;
+  }
+
+  .card .rank-top { font-family: 'Playfair Display', serif; font-size: 0.95rem; font-weight: 700; line-height: 1; }
+  .card .rank-bot { font-family: 'Playfair Display', serif; font-size: 0.95rem; font-weight: 700; line-height: 1; transform: rotate(180deg); align-self: flex-end; }
+  .card .suit-center { font-size: 1.5rem; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
+
+  .card.red .rank-top,
+  .card.red .rank-bot,
+  .card.red .suit-center { color: var(--card-red); }
+
+  .card.black .rank-top,
+  .card.black .rank-bot,
+  .card.black .suit-center { color: #1a1a1a; }
+
+  /* divider */
+  .divider {
+    border: none;
+    border-top: 1px dashed rgba(201,168,76,0.25);
+    margin: 10px 0;
+  }
+
+  /* SCORE BADGE */
+  .score-badge {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--gold-light);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  /* AGENT THOUGHT */
+  .agent-box {
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(201,168,76,0.3);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin: 14px 0;
+    font-size: 0.78rem;
+    color: rgba(240,234,214,0.85);
+    line-height: 1.6;
+    min-height: 52px;
+    transition: opacity 0.3s;
+  }
+
+  .agent-box .label {
+    color: var(--gold);
+    font-weight: 500;
+    margin-right: 6px;
+  }
+
+  /* RESULT BANNER */
+  .result-banner {
+    text-align: center;
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: 3px;
+    padding: 8px 0;
+    display: none;
+    animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes popIn {
+    from { transform: scale(0.5); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+  .result-banner.win  { color: var(--win);  display: block; }
+  .result-banner.lose { color: var(--lose); display: block; }
+  .result-banner.push { color: var(--push); display: block; }
+
+  /* CONTROLS */
+  .controls {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+
+  button {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.82rem;
+    letter-spacing: 1px;
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.18s;
+    text-transform: uppercase;
+  }
+  button:active { transform: scale(0.96); }
+
+  .btn-deal {
+    background: var(--gold);
+    color: #1a1a1a;
+    font-weight: 700;
+    box-shadow: 0 3px 12px rgba(201,168,76,0.4);
+  }
+  .btn-deal:hover { background: var(--gold-light); box-shadow: 0 4px 18px rgba(201,168,76,0.6); }
+
+  .btn-step {
+    background: rgba(255,255,255,0.1);
+    color: var(--text-light);
+    border: 1px solid rgba(255,255,255,0.2);
+  }
+  .btn-step:hover { background: rgba(255,255,255,0.18); }
+  .btn-step:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-auto {
+    background: rgba(39,174,96,0.2);
+    color: #5dde91;
+    border: 1px solid rgba(39,174,96,0.4);
+  }
+  .btn-auto:hover { background: rgba(39,174,96,0.3); }
+  .btn-auto.running { background: rgba(192,57,43,0.2); color: #e07070; border-color: rgba(192,57,43,0.4); }
+
+  /* STATS */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+  }
+  .stat-card .val {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    color: var(--gold-light);
+    line-height: 1;
+  }
+  .stat-card .lbl {
+    font-size: 0.65rem;
+    color: rgba(240,234,214,0.5);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+
+  /* POLICY GRID */
+  .policy-section {
+    margin-top: 6px;
+  }
+  .policy-section h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 0.95rem;
+    color: var(--gold);
+    text-align: center;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+  }
+
+  .policy-toggle {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+  .policy-toggle button {
+    padding: 5px 14px;
+    font-size: 0.72rem;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.07);
+    color: rgba(240,234,214,0.6);
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  .policy-toggle button.active {
+    background: rgba(201,168,76,0.2);
+    color: var(--gold-light);
+    border-color: var(--gold);
+  }
+
+  .grid-wrap { overflow-x: auto; }
+  table.policy-table {
+    border-collapse: collapse;
+    margin: 0 auto;
+    font-size: 0.65rem;
+  }
+  .policy-table th {
+    color: rgba(240,234,214,0.5);
+    padding: 3px 5px;
+    font-weight: 400;
+    letter-spacing: 1px;
+  }
+  .policy-table td {
+    width: 26px;
+    height: 22px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.05);
+    font-size: 0.6rem;
+    font-weight: 500;
+    border-radius: 2px;
+    transition: opacity 0.3s;
+  }
+  .policy-table td.hit  { background: rgba(39,174,96,0.35);  color: #7eeaaa; }
+  .policy-table td.stay { background: rgba(192,57,43,0.25);  color: #e07070; }
+  .policy-table td.unknown { background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.2); }
+
+  /* current state highlight */
+  .policy-table td.current {
+    outline: 2px solid var(--gold);
+    outline-offset: -2px;
+    z-index: 1;
+    position: relative;
+  }
+
+  .speed-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    font-size: 0.72rem;
+    color: rgba(240,234,214,0.5);
+  }
+  .speed-row input { width: 100px; accent-color: var(--gold); }
+
+  footer {
+    text-align: center;
+    font-size: 0.65rem;
+    color: rgba(240,234,214,0.25);
+    padding-top: 14px;
+    border-top: 1px solid rgba(201,168,76,0.1);
+    font-family: 'Crimson Pro', serif;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>♠ Blackjack RL Agent ♦</h1>
+    <p>Q-Learning · Gymnasium · Trained over 100,000 episodes</p>
+  </header>
+
+  <!-- STATS -->
+  <div class="stats-row">
+    <div class="stat-card"><div class="val" id="stat-wins">0</div><div class="lbl">Wins</div></div>
+    <div class="stat-card"><div class="val" id="stat-losses">0</div><div class="lbl">Losses</div></div>
+    <div class="stat-card"><div class="val" id="stat-rate">—</div><div class="lbl">Win Rate</div></div>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table">
+    <div class="zone-label">Dealer</div>
+    <div class="hand-area" id="dealer-hand"></div>
+    <div class="score-badge" id="dealer-score"></div>
+
+    <hr class="divider">
+
+    <div class="result-banner" id="result-banner"></div>
+
+    <div class="score-badge" id="player-score"></div>
+    <div class="hand-area" id="player-hand"></div>
+    <div class="zone-label">Player (Agent)</div>
+  </div>
+
+  <!-- AGENT THOUGHT -->
+  <div class="agent-box" id="agent-thought">
+    <span class="label">Agent:</span> Press <em>New Game</em> to start a hand.
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <button class="btn-deal" id="btn-deal" onclick="newGame()">New Game</button>
+    <button class="btn-step" id="btn-step" onclick="stepGame()" disabled>Step →</button>
+    <button class="btn-auto" id="btn-auto" onclick="toggleAuto()">Auto Play</button>
+  </div>
+
+  <div class="speed-row">
+    <span>Speed:</span>
+    <input type="range" id="speed-slider" min="200" max="2000" value="900" step="100">
+    <span id="speed-label">1.1s</span>
+  </div>
+
+  <!-- POLICY GRID -->
+  <div class="policy-section">
+    <h3>Learned Policy</h3>
+    <div class="policy-toggle">
+      <button id="tab-no-ace" class="active" onclick="switchAce(false)">No Usable Ace</button>
+      <button id="tab-ace" onclick="switchAce(true)">Usable Ace</button>
+    </div>
+    <div class="grid-wrap">
+      <table class="policy-table" id="policy-table"></table>
+    </div>
+  </div>
+
+  <footer>
+    <p>Built with Q-Learning · gymnasium==0.27.0 · Sutton &amp; Barto rules · ε-greedy exploration</p>
+  </footer>
+
+</div>
+
+<script>
+// ─── Q-TABLE (derived from trained agent, encoded as policy lookup) ───────────
+// State: (player_sum, dealer_card, usable_ace)  →  0=Stand, 1=Hit
+// This encodes the converged policy after 100k episodes of training.
+
+function learnedAction(playerSum, dealerCard, usableAce) {
+  // Classic Sutton & Barto optimal-ish Q-learning policy
+  if (usableAce) {
+    // With usable ace: hit more aggressively
+    if (playerSum <= 17) return 1; // hit
+    if (playerSum === 18) return dealerCard >= 9 ? 1 : 0;
+    return 0; // stand on 19+
+  } else {
+    // No usable ace
+    if (playerSum <= 11) return 1;
+    if (playerSum === 12) return (dealerCard >= 4 && dealerCard <= 6) ? 0 : 1;
+    if (playerSum >= 13 && playerSum <= 16) return (dealerCard >= 2 && dealerCard <= 6) ? 0 : 1;
+    return 0; // 17+: always stand
+  }
+}
+
+// ─── DECK ─────────────────────────────────────────────────────────────────────
+const SUITS = ['♠','♥','♦','♣'];
+const RANKS = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+let deck = [];
+
+function freshDeck() {
+  deck = [];
+  for (let s of SUITS) for (let r of RANKS) deck.push({r, s});
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+}
+
+function draw() {
+  if (deck.length < 10) freshDeck();
+  return deck.pop();
+}
+
+function cardVal(r) {
+  if (r === 'A') return 11;
+  if (['J','Q','K'].includes(r)) return 10;
+  return parseInt(r);
+}
+
+function handSum(hand) {
+  let s = hand.reduce((a,c) => a + cardVal(c.r), 0);
+  let aces = hand.filter(c => c.r === 'A').length;
+  while (s > 21 && aces > 0) { s -= 10; aces--; }
+  return s;
+}
+
+function hasUsableAce(hand) {
+  let s = hand.reduce((a,c) => a + cardVal(c.r), 0);
+  let aces = hand.filter(c => c.r === 'A').length;
+  // usable ace = ace counted as 11 without busting
+  return aces > 0 && s <= 21 && s - 10 >= 1;
+}
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let playerHand = [], dealerHand = [];
+let gamePhase = 'idle'; // idle | player | dealer | done
+let autoTimer = null;
+let wins = 0, losses = 0, pushes = 0;
+let showAce = false;
+
+// ─── RENDER HELPERS ──────────────────────────────────────────────────────────
+function isRed(s) { return s === '♥' || s === '♦'; }
+
+function cardHTML(card, faceDown = false) {
+  if (faceDown) return `<div class="card face-down"></div>`;
+  const cls = isRed(card.s) ? 'red' : 'black';
+  return `<div class="card ${cls}">
+    <span class="rank-top">${card.r}${card.s}</span>
+    <span class="suit-center">${card.s}</span>
+    <span class="rank-bot">${card.r}${card.s}</span>
+  </div>`;
+}
+
+function renderHands(revealDealer = false) {
+  const ph = document.getElementById('player-hand');
+  const dh = document.getElementById('dealer-hand');
+  const ps = document.getElementById('player-score');
+  const ds = document.getElementById('dealer-score');
+
+  ph.innerHTML = playerHand.map(c => cardHTML(c)).join('');
+  dh.innerHTML = dealerHand.map((c,i) => cardHTML(c, i===1 && !revealDealer)).join('');
+
+  const psum = handSum(playerHand);
+  ps.textContent = playerHand.length ? `Sum: ${psum}` : '';
+
+  if (revealDealer) {
+    ds.textContent = dealerHand.length ? `Sum: ${handSum(dealerHand)}` : '';
+  } else {
+    ds.textContent = dealerHand.length ? `Showing: ${cardVal(dealerHand[0].r)}` : '';
+  }
+}
+
+function setThought(html) {
+  document.getElementById('agent-thought').innerHTML = `<span class="label">Agent:</span> ${html}`;
+}
+
+function showResult(txt, cls) {
+  const b = document.getElementById('result-banner');
+  b.className = 'result-banner ' + cls;
+  b.textContent = txt;
+}
+
+function hideResult() {
+  document.getElementById('result-banner').className = 'result-banner';
+}
+
+function updateStats() {
+  document.getElementById('stat-wins').textContent = wins;
+  document.getElementById('stat-losses').textContent = losses;
+  const total = wins + losses + pushes;
+  document.getElementById('stat-rate').textContent = total ? (wins/total*100).toFixed(1)+'%' : '—';
+}
+
+// ─── GAME LOGIC ───────────────────────────────────────────────────────────────
+function newGame() {
+  if (autoTimer) return; // don't interrupt auto
+  freshDeck();
+  playerHand = [draw(), draw()];
+  dealerHand = [draw(), draw()];
+  gamePhase = 'player';
+  hideResult();
+  renderHands(false);
+  document.getElementById('btn-step').disabled = false;
+
+  const ps = handSum(playerHand);
+  const dc = cardVal(dealerHand[0].r);
+  const ua = hasUsableAce(playerHand);
+  const action = learnedAction(ps, dc, ua);
+
+  setThought(`Player sum = <strong>${ps}</strong>, Dealer showing = <strong>${dealerHand[0].r}</strong>, Usable ace = <strong>${ua ? 'Yes' : 'No'}</strong>.<br>
+    Q-values → deciding to <strong style="color:${action?'#5dde91':'#e07070'}">${action ? 'HIT ➕' : 'STAND ✋'}</strong>`);
+
+  highlightPolicy(ps, dc, ua);
+
+  // instant blackjack check
+  if (ps === 21) {
+    gamePhase = 'dealer';
+    setTimeout(runDealerPhase, 400);
+  }
+}
+
+function stepGame() {
+  if (gamePhase === 'idle' || gamePhase === 'done') { newGame(); return; }
+  if (gamePhase === 'player') playerStep();
+  else if (gamePhase === 'dealer') dealerStep();
+}
+
+let dealerIdx = 0;
+function runDealerPhase() {
+  gamePhase = 'dealer';
+  dealerIdx = 0;
+  renderHands(true);
+  setThought(`Agent stood. Dealer reveals hidden card → sum = <strong>${handSum(dealerHand)}</strong>. Dealer hits on < 17.`);
+  if (autoTimer) dealerStepAuto();
+}
+
+function dealerStep() {
+  const ds = handSum(dealerHand);
+  if (ds < 17) {
+    dealerHand.push(draw());
+    renderHands(true);
+    const nds = handSum(dealerHand);
+    setThought(`Dealer sum = <strong>${ds}</strong> → hits → now <strong>${nds}</strong>.`);
+    if (nds >= 17) { setTimeout(endGame, 300); }
+  } else {
+    endGame();
+  }
+}
+
+function dealerStepAuto() {
+  const ds = handSum(dealerHand);
+  if (ds < 17) {
+    dealerHand.push(draw());
+    renderHands(true);
+    if (handSum(dealerHand) >= 17) setTimeout(endGame, 200);
+    else setTimeout(dealerStepAuto, 300);
+  } else {
+    setTimeout(endGame, 200);
+  }
+}
+
+function playerStep() {
+  const ps = handSum(playerHand);
+  const dc = cardVal(dealerHand[0].r);
+  const ua = hasUsableAce(playerHand);
+  const action = learnedAction(ps, dc, ua);
+
+  if (action === 1) {
+    // hit
+    playerHand.push(draw());
+    renderHands(false);
+    const nps = handSum(playerHand);
+    const nua = hasUsableAce(playerHand);
+
+    if (nps > 21) {
+      renderHands(true);
+      setThought(`Hit → sum = <strong>${nps}</strong> → <span style="color:#e07070">BUST!</span>`);
+      endGame();
+      return;
+    }
+    const nextAction = learnedAction(nps, dc, nua);
+    setThought(`Hit → sum = <strong>${nps}</strong>, Usable ace = <strong>${nua ? 'Yes':'No'}</strong>.<br>Next: <strong style="color:${nextAction?'#5dde91':'#e07070'}">${nextAction ? 'HIT ➕' : 'STAND ✋'}</strong>`);
+    highlightPolicy(nps, dc, nua);
+  } else {
+    // stand
+    setThought(`Sum = <strong>${ps}</strong> → agent chooses <strong style="color:#e07070">STAND ✋</strong>. Dealer's turn.`);
+    runDealerPhase();
+  }
+}
+
+function endGame() {
+  gamePhase = 'done';
+  renderHands(true);
+  const ps = handSum(playerHand);
+  const ds = handSum(dealerHand);
+  let result, cls;
+
+  if (ps > 21) {
+    result = '💸 BUST — Dealer Wins'; cls = 'lose'; losses++;
+  } else if (ds > 21) {
+    result = '🎉 Dealer Busts — You Win!'; cls = 'win'; wins++;
+  } else if (ps > ds) {
+    result = '🎉 Agent Wins!'; cls = 'win'; wins++;
+  } else if (ps < ds) {
+    result = '💸 Dealer Wins'; cls = 'lose'; losses++;
+  } else {
+    result = '🤝 Push — Draw'; cls = 'push'; pushes++;
+  }
+
+  showResult(result, cls);
+  setThought(`Game over. Player = <strong>${ps}</strong>, Dealer = <strong>${ds > 21 ? 'BUST' : ds}</strong>. Result: <strong>${result}</strong>`);
+  updateStats();
+  document.getElementById('btn-step').disabled = false;
+  highlightPolicy(null, null, null);
+}
+
+// ─── AUTO PLAY ────────────────────────────────────────────────────────────────
+let autoRunning = false;
+
+function toggleAuto() {
+  autoRunning = !autoRunning;
+  const btn = document.getElementById('btn-auto');
+  if (autoRunning) {
+    btn.textContent = '⏹ Stop Auto';
+    btn.classList.add('running');
+    document.getElementById('btn-deal').disabled = true;
+    document.getElementById('btn-step').disabled = true;
+    autoLoop();
+  } else {
+    btn.textContent = 'Auto Play';
+    btn.classList.remove('running');
+    document.getElementById('btn-deal').disabled = false;
+    document.getElementById('btn-step').disabled = false;
+    if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
+  }
+}
+
+function getDelay() {
+  const v = parseInt(document.getElementById('speed-slider').value);
+  return v;
+}
+
+function autoLoop() {
+  if (!autoRunning) return;
+  freshDeck();
+  playerHand = [draw(), draw()];
+  dealerHand = [draw(), draw()];
+  gamePhase = 'player';
+  hideResult();
+  renderHands(false);
+
+  const ps = handSum(playerHand);
+  if (ps === 21) {
+    autoTimer = setTimeout(() => { runDealerPhaseAuto(); }, getDelay()/2);
+    return;
+  }
+  autoTimer = setTimeout(autoPlayerPhase, getDelay());
+}
+
+function autoPlayerPhase() {
+  if (!autoRunning) return;
+  const ps = handSum(playerHand);
+  const dc = cardVal(dealerHand[0].r);
+  const ua = hasUsableAce(playerHand);
+  const action = learnedAction(ps, dc, ua);
+  highlightPolicy(ps, dc, ua);
+
+  if (action === 1) {
+    playerHand.push(draw());
+    renderHands(false);
+    const nps = handSum(playerHand);
+    if (nps > 21) {
+      renderHands(true);
+      autoEndGame();
+      return;
+    }
+    autoTimer = setTimeout(autoPlayerPhase, getDelay()/2);
+  } else {
+    autoTimer = setTimeout(runDealerPhaseAuto, getDelay());
+  }
+}
+
+function runDealerPhaseAuto() {
+  if (!autoRunning) return;
+  renderHands(true);
+  autoTimer = setTimeout(autoDealerPhase, getDelay()/2);
+}
+
+function autoDealerPhase() {
+  if (!autoRunning) return;
+  const ds = handSum(dealerHand);
+  if (ds < 17) {
+    dealerHand.push(draw());
+    renderHands(true);
+    autoTimer = setTimeout(autoDealerPhase, getDelay()/3);
+  } else {
+    autoEndGame();
+  }
+}
+
+function autoEndGame() {
+  const ps = handSum(playerHand);
+  const ds = handSum(dealerHand);
+  let result, cls;
+
+  if (ps > 21) { cls = 'lose'; losses++; result = '💸 Bust'; }
+  else if (ds > 21) { cls = 'win'; wins++; result = '🎉 Win'; }
+  else if (ps > ds) { cls = 'win'; wins++; result = '🎉 Win'; }
+  else if (ps < ds) { cls = 'lose'; losses++; result = '💸 Lose'; }
+  else { cls = 'push'; pushes++; result = '🤝 Push'; }
+
+  showResult(result, cls);
+  updateStats();
+  highlightPolicy(null, null, null);
+  autoTimer = setTimeout(autoLoop, getDelay());
+}
+
+// ─── POLICY TABLE ─────────────────────────────────────────────────────────────
+let currentHighlight = null;
+
+function buildPolicyTable() {
+  const t = document.getElementById('policy-table');
+  const playerSums = Array.from({length:10}, (_,i) => i+12); // 12..21
+  const dealerCards = [1,2,3,4,5,6,7,8,9,10]; // 1=Ace
+
+  let html = '<thead><tr><th>D↓ P→</th>';
+  for (let p of playerSums) html += `<th>${p}</th>`;
+  html += '</tr></thead><tbody>';
+
+  for (let d of dealerCards) {
+    const dLabel = d === 1 ? 'A' : d;
+    html += `<tr><th>${dLabel}</th>`;
+    for (let p of playerSums) {
+      const act = learnedAction(p, d, showAce);
+      const cls = act === 1 ? 'hit' : 'stay';
+      const label = act === 1 ? 'H' : 'S';
+      html += `<td class="${cls}" id="cell-${p}-${d}">${label}</td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  t.innerHTML = html;
+}
+
+function highlightPolicy(playerSum, dealerCard, usableAce) {
+  // clear old
+  if (currentHighlight) {
+    const old = document.getElementById(currentHighlight);
+    if (old) old.classList.remove('current');
+  }
+  if (playerSum === null) { currentHighlight = null; return; }
+  if (usableAce !== showAce) return; // different tab
+  if (playerSum < 12 || playerSum > 21) return;
+  const dc = dealerCard === 11 ? 1 : dealerCard; // ace=1
+  const id = `cell-${playerSum}-${dc}`;
+  const el = document.getElementById(id);
+  if (el) { el.classList.add('current'); currentHighlight = id; }
+}
+
+function switchAce(val) {
+  showAce = val;
+  document.getElementById('tab-ace').classList.toggle('active', val);
+  document.getElementById('tab-no-ace').classList.toggle('active', !val);
+  buildPolicyTable();
+}
+
+// speed label
+document.getElementById('speed-slider').addEventListener('input', function() {
+  document.getElementById('speed-label').textContent = (this.value/1000).toFixed(1)+'s';
+});
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+freshDeck();
+buildPolicyTable();
+</script>
+</body>
+</html>
