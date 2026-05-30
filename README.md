@@ -17,6 +17,7 @@ A Q-Learning agent trained to play Blackjack using the `Blackjack-v1` environmen
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/17RwRlfpSJNY-RdS4LnaAUqiEKywuY9oo?hl=en)
 
 ---
+> *Note: If the notebook doesn't render on GitHub, open it directly in Colab using the badge above.*
 
 ## 📌 Overview
 
